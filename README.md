@@ -6,9 +6,11 @@
 
 <br>
 
-# Cap 1 - A consolidação de um sistema
+# Nome do projeto
+Cap 1 - A consolidação de um sistema
 
-## Grupo 24
+## Nome do grupo
+Grupo 24
 
 ## 👨‍🎓 Integrantes: 
 - <a href="https://www.linkedin.com/in/anacornachi/">Ana Cornachi</a>
@@ -53,16 +55,14 @@ Dentre os arquivos e pastas presentes na raiz do projeto, definem-se:
 
 ## 🗃 Histórico de lançamentos
 
-* 0.5.0 - XX/XX/2024
-    * 
-* 0.4.0 - XX/XX/2024
-    * 
-* 0.3.0 - XX/XX/2024
-    * 
-* 0.2.0 - XX/XX/2024
-    * 
 * 0.1.0 - XX/XX/2024
-    *
+  * Primeira versão consolidada da dashboard, com todas as fases do projeto mapeadas e ações mockadas. 
+  * Serve como base da integração total da Fase 7. 
+  * Novidades:
+    * Adicionada dashboard completa em src/dashboard.py 
+    * Criadas abas para todas as fases (1, 2, 3, 4, 5/7, 6)
+    * Incluídos botões de ação simulados para cada etapa 
+    * Gráficos, métricas e tabelas mockadas para visualização
 
 ## 📋 Licença
 
