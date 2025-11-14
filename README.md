@@ -55,7 +55,7 @@ Dentre os arquivos e pastas presentes na raiz do projeto, definem-se:
 
 ## 🗃 Histórico de lançamentos
 
-* 0.1.0 - XX/XX/2024
+* 0.1.0 - 13/11/2025
   * Primeira versão consolidada da dashboard, com todas as fases do projeto mapeadas e ações mockadas. 
   * Serve como base da integração total da Fase 7. 
   * Novidades:
