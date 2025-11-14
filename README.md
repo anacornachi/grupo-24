@@ -6,9 +6,9 @@
 
 <br>
 
-# Nome do projeto
+# Cap 1 - A consolidação de um sistema
 
-## Nome do grupo
+## Grupo 24
 
 ## 👨‍🎓 Integrantes: 
 - <a href="https://www.linkedin.com/in/anacornachi/">Ana Cornachi</a>
