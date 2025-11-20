@@ -1,8 +1,31 @@
-python-dotenv~=1.2.1
-streamlit~=1.51.0
-pandas~=2.3.3
-numpy~=2.2.6
-requests~=2.32.5
-protobuf~=6.33.1
-boto3~=1.40.76
-botocore~=1.40.76
+# Core dependencies
+streamlit==1.31.0
+pandas==2.1.4
+numpy==1.26.3
+
+# Plotting
+plotly==5.18.0
+matplotlib==3.8.2
+seaborn==0.13.1
+
+# Machine Learning
+scikit-learn==1.4.0
+
+# Database
+sqlalchemy==2.0.25
+oracledb==2.0.1
+
+# Environment variables
+python-dotenv==1.0.1
+
+# AWS
+boto3==1.40.76
+botocore==1.35.76
+
+# API requests
+requests==2.31.0
+
+# Computer Vision (Fase 6)
+opencv-python==4.9.0.80
+ultralytics==8.1.18
+Pillow==10.2.0

@@ -220,25 +220,146 @@ aba = st.sidebar.radio("Navegue pelas Fases:", [
     "💧 Fase 3 — Sensores e Irrigação",
     "🤖 Fase 4 — Modelo Preditivo",
     "🪲 Fase 6 — Visão Computacional",
-    "📨 Alertas AWS",
 ])
 
 
 # =========================
-# VISÃO GERAL
+# HOME - PÁGINA INICIAL
 # =========================
-if aba == "🏠 Visão Geral":
-    banner("Dashboard Geral da Fazenda — Status Atual", "#0f4c75")
-
+if aba == "🏠 Home":
+    # Header com logo/título
+    st.markdown("""
+    <div style='text-align: center; padding: 2rem 0;'>
+        <h1 style='color: #2e7d32; font-size: 3rem;'>🌾 FarmTech Solutions</h1>
+        <h3 style='color: #666; font-weight: 300;'>Sistema Integrado de Gestão Agrícola Inteligente</h3>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Apresentação do projeto
+    st.markdown("""
+    ### 📋 Sobre o Projeto
+    
+    O **FarmTech Solutions** é uma plataforma completa que integra **6 fases** do desenvolvimento de um sistema agrícola moderno, 
+    unificando cálculos, gestão de dados, Internet das Coisas (IoT), Machine Learning e Visão Computacional em uma única dashboard interativa.
+    
+    **Desenvolvido para:** Pequenos e médios produtores rurais que buscam otimizar recursos, reduzir custos e tomar decisões baseadas em dados.
+    """)
+    
+    st.markdown("---")
+    
+    # Cards de navegação
+    st.subheader("🚀 Funcionalidades por Fase")
+    
     col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 1.5rem; border-radius: 10px; color: white;'>
+            <h3 style='margin: 0; color: white;'>🧮 Fase 1</h3>
+            <p style='margin: 0.5rem 0 0 0; font-size: 0.9rem;'><b>Calculadora de Plantio</b></p>
+            <ul style='font-size: 0.85rem; margin: 0.5rem 0;'>
+                <li>Cálculo de áreas (formas geométricas)</li>
+                <li>Estimativa de insumos</li>
+                <li>Gestão de culturas</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 1.5rem; border-radius: 10px; color: white;'>
+            <h3 style='margin: 0; color: white;'>🚜 Fase 2</h3>
+            <p style='margin: 0.5rem 0 0 0; font-size: 0.9rem;'><b>Gestão Completa</b></p>
+            <ul style='font-size: 0.85rem; margin: 0.5rem 0;'>
+                <li>Banco de dados Oracle</li>
+                <li>Histórico de safras</li>
+                <li>Previsão de demanda (ML)</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); padding: 1.5rem; border-radius: 10px; color: white;'>
+            <h3 style='margin: 0; color: white;'>💧 Fase 3</h3>
+            <p style='margin: 0.5rem 0 0 0; font-size: 0.9rem;'><b>IoT e Sensores</b></p>
+            <ul style='font-size: 0.85rem; margin: 0.5rem 0;'>
+                <li>Monitoramento em tempo real</li>
+                <li>API de clima (OpenWeather)</li>
+                <li>Alertas automáticos (SNS)</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    col4, col5, col6 = st.columns(3)
+    
+    with col4:
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); padding: 1.5rem; border-radius: 10px; color: white;'>
+            <h3 style='margin: 0; color: white;'>🤖 Fase 4</h3>
+            <p style='margin: 0.5rem 0 0 0; font-size: 0.9rem;'><b>Machine Learning</b></p>
+            <ul style='font-size: 0.85rem; margin: 0.5rem 0;'>
+                <li>Random Forest para irrigação</li>
+                <li>Análise de correlações</li>
+                <li>Simulador "What-If"</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col5:
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); padding: 1.5rem; border-radius: 10px; color: #333;'>
+            <h3 style='margin: 0;'>☁️ Fase 5</h3>
+            <p style='margin: 0.5rem 0 0 0; font-size: 0.9rem;'><b>Cloud Computing</b></p>
+            <ul style='font-size: 0.85rem; margin: 0.5rem 0;'>
+                <li>Análise de custos AWS</li>
+                <li>Ciência de dados (Notebook)</li>
+                <li>K-Means & Regressão</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col6:
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); padding: 1.5rem; border-radius: 10px; color: #333;'>
+            <h3 style='margin: 0;'>🪲 Fase 6</h3>
+            <p style='margin: 0.5rem 0 0 0; font-size: 0.9rem;'><b>Visão Computacional</b></p>
+            <ul style='font-size: 0.85rem; margin: 0.5rem 0;'>
+                <li>Detecção de pragas (YOLO)</li>
+                <li>Upload de imagens</li>
+                <li>Alertas automáticos (SNS)</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Tecnologias utilizadas
+    st.subheader("🛠️ Tecnologias Integradas")
+    
+    col_tech1, col_tech2, col_tech3, col_tech4 = st.columns(4)
+    col_tech1.markdown("**Frontend**\n- Streamlit\n- Plotly")
+    col_tech2.markdown("**Banco de Dados**\n- Oracle DB\n- SQLAlchemy")
+    col_tech3.markdown("**Machine Learning**\n- Scikit-learn\n- YOLOv8")
+    col_tech4.markdown("**Cloud & APIs**\n- AWS SNS\n- OpenWeatherMap")
+    
+    st.markdown("---")
+    
+    # Instruções de navegação
+    st.info("👈 **Navegue pelas fases usando o menu lateral** para explorar todas as funcionalidades do sistema!")
+    
+    # Footer com estatísticas
+    st.markdown("---")
+    col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+    col_stat1.metric("Fases Integradas", "6")
+    col_stat2.metric("Alertas SNS", "Ativo")
+    col_stat3.metric("API de Clima", "Real-time")
+    col_stat4.metric("Status", "✅ Operacional")
 
-    col1.metric("🌡️ Temperatura Atual", "28°C", "+2°C vs ontem")
-    col2.metric("💧 Umidade do Solo", "41%", "-7% vs ontem")
-    col3.metric("🌥️ Última Análise Climática", "Normal")
-
-    st.subheader("📊 Histórico de Leituras dos Sensores")
-    df = create_mock_dataframe(30)
-    st.line_chart(df[["Umidade (%)", "Temperatura (°C)"]])
 
 
 # =========================
@@ -927,6 +1048,10 @@ elif aba == "💧 Fase 3 — Sensores e Irrigação":
                 from src.final.aws_sns_service import get_sns_service
                 sns_service = get_sns_service()
                 
+                # Inicializar controle de alertas enviados na sessão
+                if 'sent_alerts' not in st.session_state:
+                    st.session_state.sent_alerts = set()
+                
                 alerts = []
                 
                 # Verificar condições críticas
@@ -954,13 +1079,22 @@ elif aba == "💧 Fase 3 — Sensores e Irrigação":
                         with col_alert:
                             st.error(f"🚨 **{alert_type}**")
                         with col_status:
-                            # Tentar enviar SNS automaticamente
-                            if sns_service.send_sensor_alert(alert_type, dict(sensor_data)):
-                                st.success("📧 SNS enviado")
+                            # Criar chave única para este alerta
+                            alert_key = f"{alert_type}_{latest['timestamp']}"
+                            
+                            # Enviar SNS apenas se ainda não foi enviado nesta sessão
+                            if alert_key not in st.session_state.sent_alerts:
+                                if sns_service.send_sensor_alert(alert_type, dict(sensor_data)):
+                                    st.session_state.sent_alerts.add(alert_key)
+                                    st.success("📧 SNS enviado")
+                                else:
+                                    st.info("SNS não config.")
                             else:
-                                st.info("SNS não config.")
+                                st.info("✅ Já enviado")
                 else:
                     st.success("✅ Todos os parâmetros estão dentro do normal")
+                    # Limpar alertas enviados quando tudo estiver normal
+                    st.session_state.sent_alerts = set()
                     
             except Exception as e:
                 st.error(f"Erro ao verificar alertas: {e}")
@@ -1210,9 +1344,9 @@ elif aba == "🪲 Fase 6 — Visão Computacional":
                         bytes_data = uploaded_file.getvalue()
                         
                         # Analisar
-                        annotated_img, detections = cv_service.analyze_image(bytes_data)
+                        success, annotated_img, detections = cv_service.analyze_image(bytes_data)
                         
-                        if annotated_img:
+                        if success and annotated_img is not None:
                             st.image(annotated_img, caption="Imagem Anotada", use_container_width=True)
                             
                             if detections:
@@ -1245,20 +1379,3 @@ elif aba == "🪲 Fase 6 — Visão Computacional":
                         st.code("pip install opencv-python ultralytics")
                     except Exception as e:
                         st.error(f"Erro durante a análise: {e}")
-
-
-# =========================
-# ALERTAS AWS (SNS)
-# =========================
-elif aba == "📨 Alertas AWS":
-    banner("Integração AWS SNS — Envio de Alertas Automáticos", "#14213d")
-
-    subject = st.text_input("Assunto do alerta", "Alerta da Fazenda Inteligente")
-    message = st.text_area("Mensagem do alerta")
-
-    if st.button("Enviar alerta"):
-        result = send_alert(message, subject)
-        if result["ok"]:
-            st.success(f"Alerta enviado! MessageId: {result['message_id']}")
-        else:
-            st.error(f"Erro ao enviar: {result['error']}")
