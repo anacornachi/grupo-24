@@ -55,6 +55,39 @@ Dentre os arquivos e pastas presentes na raiz do projeto, definem-se:
 
 ## 🗃 Histórico de lançamentos
 
+* 0.3.0 - 20/11/2024
+  * **Dashboard Unificado Completo** - Integração total de todas as fases (1-6) em produção
+  * **Fase 2 - Gestão Completa:**
+    * Sistema de previsão de demanda e forecast totalmente funcional
+  * **Fase 3 - IoT e Sensores:**
+    * Monitoramento climático em tempo real via **OpenWeatherMap API**
+    * Botão "Sincronizar Clima" para buscar dados reais (temperatura, umidade, previsão de chuva)
+    * Exibição de métricas de solo (umidade, pH, fósforo, potássio, irrigação)
+    * Simulador IoT (Digital Twin) para gerar leituras de sensor
+    * **Sistema de Alertas** para 5 condições críticas (pH, seca, encharcamento, nutrientes, irrigação)
+    * Setup e seed do banco de dados executados para criar tabelas e dados iniciais
+  * **Fase 4 - Machine Learning:**
+    * Interface completa de treinamento de modelo (Random Forest)
+    * Gráfico de importância de features (Plotly)
+    * Simulador "What-If" para predições interativas
+    * Análises avançadas com matriz de correlação e padrões de irrigação
+    * Métricas de acurácia e relatórios de classificação
+  * **Fase 6 - Visão Computacional:**
+    * Detecção de pragas e animais usando **YOLOv8** (Ultralytics)
+    * Upload de imagens e análise em tempo real
+    * Identificação automática de animais (pássaros, roedores, mamíferos)
+    * **Alertas SNS** disparados automaticamente quando pragas são detectadas
+  * **AWS SNS - Sistema de Alertas Inteligente:**
+    * Criado serviço `aws_sns_service.py` com integração boto3
+    * Alertas para detecção de pragas (Fase 6)
+    * Alertas para condições críticas de sensores (Fase 3)
+    * Configuração via variáveis de ambiente (.env)
+    * Degradação graciosa (funciona mesmo sem AWS configurado)
+  * **Melhorias Gerais:**
+    * Adicionado `plotly` para visualizações interativas
+    * Importações organizadas e otimizadas
+    * Tratamento robusto de erros em todos os módulos
+
 * 0.2.0 - 20/11/2025
   * Integração real da Fase 1 na dashboard, substituindo os mocks por lógica funcional.
   * Implementação completa do CRUD de culturas (Create, Read, Update e Delete), mantendo

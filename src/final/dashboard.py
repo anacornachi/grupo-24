@@ -1,7 +1,10 @@
 import os
 import sys
-
-from src.fase1.cap1_python.src.calculations import calculate_input_quantity
+from datetime import datetime
+from sklearn.linear_model import LinearRegression
+import plotly.express as px
+import plotly.graph_objects as go
+import pandas as pd
 
 CURRENT_FILE = os.path.abspath(__file__)
 FINAL_DIR = os.path.dirname(CURRENT_FILE)
@@ -11,12 +14,49 @@ PROJECT_ROOT = os.path.dirname(SRC_DIR)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+from src.fase1.cap1_python.src.calculations import calculate_input_quantity
+# ... existing imports ...
+from src.fase1.cap1_python.src.calculations import calculate_input_quantity
+from src.fase2.src.repositories.crop import save_crop_to_db, get_all_crops, update_crop_harvest_date
+from src.fase2.src.repositories.input import save_input_to_db, get_all_inputs, get_input_by_id, \
+    save_input_application_to_db, get_applications_by_crop_id, get_applications_by_input_id
+from src.fase2.src.repositories.prediction import get_historical_input_data
+
+# --- SETUP FASE 3 ---
+try:
+    # Adiciona o caminho da Fase 3 ao sys.path para permitir importação dos módulos internos dela
+    FASE3_DIR = os.path.join(PROJECT_ROOT, "src", "fase3", "src", "python")
+    if FASE3_DIR not in sys.path:
+        sys.path.append(FASE3_DIR)
+
+    from services.sensor_service import SensorRecordService
+    from services.climate_service import ClimateService
+    from services.component_service import ComponentService
+    from services.ml_service import MLService
+    from database.oracle import get_session as get_fase3_session
+    
+    # Inicializa serviços da Fase 3
+    f3_session = get_fase3_session()
+    sensor_service = SensorRecordService(f3_session)
+    climate_service = ClimateService(f3_session)
+    component_service = ComponentService(f3_session)
+    ml_service = MLService(f3_session)
+    
+    PHASE3_AVAILABLE = True
+except ImportError as e:
+    PHASE3_AVAILABLE = False
+    PHASE3_ERROR = str(e)
+    print(f"Erro ao carregar Fase 3: {e}")
+except Exception as e:
+    PHASE3_AVAILABLE = False
+    PHASE3_ERROR = str(e)
+    print(f"Erro genérico ao carregar Fase 3: {e}")
+# --------------------
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import math
-
-from src.final.services.aws_alert_service import send_alert
 
 st.set_page_config(
     page_title="Sistema Agrícola Inteligente",
@@ -65,24 +105,123 @@ def compute_area(shape: str, width=None, length=None, side=None, radius=None) ->
     return 0.0
 
 
+def fase2_load_historical_df() -> pd.DataFrame:
+    """
+    Usa o repositório prediction da Fase 2 para buscar os dados históricos
+    de aplicações de insumos e devolve um DataFrame pronto para a UI.
+    """
+    rows = get_historical_input_data()  # area, productivity, input_name, input_type, unit, unit_price, quantity
+    if not rows:
+        return pd.DataFrame()
+
+    data = []
+    for area, productivity, input_name, input_type, unit, unit_price, quantity in rows:
+        data.append(
+            {
+                "Área (ha)": area,
+                "Produtividade (t/ha)": productivity,
+                "Insumo": input_name,
+                "Tipo": input_type,
+                "Unidade": unit,
+                "Preço unitário (R$/unidade)": unit_price,
+                "Quantidade aplicada": quantity,
+            }
+        )
+
+    return pd.DataFrame(data)
+
+
+def fase2_run_forecast(target_area: float = 10.0, target_productivity: float = 6.0) -> pd.DataFrame | None:
+    """
+    Adapta a lógica de forecast.py para retornar um DataFrame para a dashboard.
+    Usa get_historical_input_data da Fase 2 e LinearRegression para prever demanda.
+
+    """
+    rows = get_historical_input_data()
+    if not rows:
+        return None
+
+    insumo_data: dict[str, dict[str, list]] = {}
+
+    for area, productivity, input_name, input_type, unit, unit_price, quantity in rows:
+        if input_name not in insumo_data:
+            insumo_data[input_name] = {
+                "X": [],
+                "y": [],
+                "unit": unit,
+                "unit_price": unit_price,
+                "input_type": input_type,
+            }
+        insumo_data[input_name]["X"].append([area, productivity])
+        insumo_data[input_name]["y"].append(quantity)
+
+    results: list[dict] = []
+
+    for input_name, data in insumo_data.items():
+        X = np.array(data["X"])
+        y = np.array(data["y"])
+
+        if len(X) < 2:
+            # Dados demais escassos para treinar – evitamos previsão sem base
+            continue
+
+        model = LinearRegression()
+        model.fit(X, y)
+
+        predicted_quantity = float(model.predict([[target_area, target_productivity]])[0])
+        estimated_cost = predicted_quantity * data["unit_price"]
+
+        total_productivity = float(sum(x[1] for x in data["X"]))
+        total_quantity = float(sum(data["y"]))
+        iei = total_productivity / total_quantity if total_quantity else 0.0
+
+        if iei > 0.5:
+            classificacao = "🌟 Alta eficiência"
+        elif iei >= 0.3:
+            classificacao = "⚖️ Eficiência média"
+        else:
+            classificacao = "❗ Baixa eficiência"
+
+        total_area = float(sum(x[0] for x in data["X"]))
+        avg_quantity_per_ha = total_quantity / total_area if total_area else 0.0
+
+        results.append(
+            {
+                "Insumo": input_name,
+                "Tipo": data["input_type"],
+                "Unidade": data["unit"],
+                "Preço unitário (R$/unidade)": data["unit_price"],
+                "Quantidade prevista": predicted_quantity,
+                "Custo estimado (R$)": estimated_cost,
+                "Índice de eficiência (t/unidade)": iei,
+                "Classificação de eficiência": classificacao,
+                "Uso médio por hectare (unidade/ha)": avg_quantity_per_ha,
+            }
+        )
+
+    if not results:
+        return None
+
+    df = pd.DataFrame(results)
+    df = df.sort_values(by="Custo estimado (R$)", ascending=False)
+    return df
+#
+
 # Estado global para culturas da Fase 1
 if "crops" not in st.session_state:
     st.session_state.crops = []
 
 
 st.sidebar.title("📌 Navegação")
-aba = st.sidebar.radio(
-    "Selecione a etapa:",
-    [
-        "🏠 Visão Geral",
-        "🌱 Fase 1 — Plantio e Insumos",
-        "📦 Fase 2 — Previsão de Insumos",
-        "💧 Fase 3 — Sensores e Irrigação",
-        "🤖 Fase 4 — Modelo Preditivo",
-        "🪲 Fase 6 — Visão Computacional",
-        "📨 Alertas AWS",
-    ]
-)
+aba = st.sidebar.radio("Navegue pelas Fases:", [
+    "🏠 Home",
+    "🧮 Calculadora de Plantio (Fase 1)",
+    "🚜 Gestão Completa (Fase 2)",
+    "💧 Fase 3 — Sensores e Irrigação",
+    "🤖 Fase 4 — Modelo Preditivo",
+    "🪲 Fase 6 — Visão Computacional",
+    "📨 Alertas AWS",
+])
 
 
 # =========================
@@ -105,8 +244,8 @@ if aba == "🏠 Visão Geral":
 # =========================
 # FASE 1 – PLANTIO E INSUMOS
 # =========================
-elif aba == "🌱 Fase 1 — Plantio e Insumos":
-    banner("Fase 1 — Cálculo de Área, Insumos e Meteorologia", "#588157")
+elif aba == "🧮 Calculadora de Plantio (Fase 1)":
+    banner("Fase 1 — Calculadora de Plantio e Insumos (Simulação)", "#588157")
 
     st.subheader("🌾 Cadastro de Área e Plantio")
 
@@ -376,20 +515,314 @@ elif aba == "🌱 Fase 1 — Plantio e Insumos":
 
 
 # =========================
-# FASE 2 – MOCK (a integrar depois)
-# =========================
-elif aba == "📦 Fase 2 — Previsão de Insumos":
-    banner("Fase 2 — Regressão Linear para Prever Demanda de Insumos", "#52796f")
+# FASE 2
+# # =========================
+elif aba == "🚜 Gestão Completa (Fase 2)":
+    banner("Fase 2 — Gestão Agrícola Completa (Banco de Dados)", "#52796f")
 
-    if st.button("Calcular previsão de demanda futura"):
-        st.success("Modelo de regressão linear executado (mock).")
+    # -----------------------------
+    # CULTURAS
+    # -----------------------------
+    st.subheader("🌱 Cadastro e gerenciamento de culturas")
 
-    st.write("📈 Previsões mockadas:")
-    st.line_chart(pd.DataFrame({
-        "Dias": range(30),
-        "Demanda Prevista": np.random.randint(10, 100, 30)
-    }))
+    with st.form("fase2_form_cultura"):
+        col1, col2 = st.columns(2)
+        with col1:
+            crop_name = st.text_input("Nome da cultura")
+            planting_date = st.date_input("Data de plantio")
+        with col2:
+            harvest_date = st.date_input("Data de colheita (opcional)", value=None)
+            area = st.number_input("Área (ha)", min_value=0.1, value=1.0, step=0.1)
+            productivity = st.number_input("Produtividade estimada (t/ha)", min_value=0.1, value=5.0, step=0.1)
 
+        submit_crop = st.form_submit_button("💾 Salvar cultura")
+
+        if submit_crop:
+            if not crop_name.strip():
+                st.warning("Informe o nome da cultura.")
+            else:
+                crop_data = {
+                    "name": crop_name.strip(),
+                    "planting_date": planting_date.strftime("%Y-%m-%d"),
+                    "harvest_date": harvest_date.strftime("%Y-%m-%d") if harvest_date else None,
+                    "area": float(area),
+                    "productivity": float(productivity),
+                }
+                save_crop_to_db(crop_data)
+                st.success("Cultura salva com sucesso no banco de dados (Oracle).")
+
+    # Listagem de culturas
+    try:
+        cultures = get_all_crops()
+    except Exception as e:
+        cultures = []
+        st.error(f"Erro ao buscar culturas: {e}")
+
+    st.markdown("### 📋 Culturas cadastradas")
+
+    if cultures:
+        df_crops = pd.DataFrame(cultures)
+        # Ajuste de exibição de datas
+        if "planting_date" in df_crops.columns:
+            df_crops["planting_date"] = pd.to_datetime(df_crops["planting_date"]).dt.date
+        if "harvest_date" in df_crops.columns:
+            df_crops["harvest_date"] = pd.to_datetime(df_crops["harvest_date"]).dt.date
+
+        df_crops = df_crops.rename(
+            columns={
+                "id": "ID",
+                "name": "Cultura",
+                "planting_date": "Plantio",
+                "harvest_date": "Colheita",
+                "area": "Área (ha)",
+                "productivity": "Produtividade (t/ha)",
+            }
+        )
+        st.dataframe(df_crops, use_container_width=True)
+    else:
+        st.info("Nenhuma cultura cadastrada ainda.")
+
+    # Atualização de data de colheita
+    st.markdown("#### ✏️ Atualizar data de colheita")
+
+    if cultures:
+        crop_options = {f"{c['id']} - {c['name']}": c["id"] for c in cultures}
+        selected_crop_label = st.selectbox("Selecione a cultura", list(crop_options.keys()))
+        selected_crop_id = crop_options[selected_crop_label]
+        new_harvest_date = st.date_input("Nova data de colheita")
+
+        if st.button("Atualizar colheita"):
+            update_crop_harvest_date(selected_crop_id, new_harvest_date.strftime("%Y-%m-%d"))
+            st.success("Data de colheita atualizada com sucesso.")
+    else:
+        st.info("Cadastre culturas para poder atualizar a data de colheita.")
+
+    st.divider()
+
+    # -----------------------------
+    # INSUMOS
+    # -----------------------------
+    st.subheader("🧪 Cadastro e visualização de insumos")
+
+    with st.form("fase2_form_insumo"):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            input_name = st.text_input("Nome do insumo")
+        with col2:
+            input_type = st.text_input("Tipo (fertilizante, defensivo, etc.)")
+        with col3:
+            unit = st.text_input("Unidade (kg, L, etc.)", value="kg")
+
+        unit_price = st.number_input("Preço unitário (R$)", min_value=0.0, value=10.0, step=0.1)
+
+        submit_input = st.form_submit_button("💾 Salvar insumo")
+
+        if submit_input:
+            if not input_name.strip() or not input_type.strip() or not unit.strip():
+                st.warning("Preencha nome, tipo e unidade do insumo.")
+            else:
+                data = {
+                    "input_type": input_type.strip(),
+                    "input_name": input_name.strip(),
+                    "unit": unit.strip(),
+                    "unit_price": float(unit_price),
+                }
+                save_input_to_db(data)
+                st.success("Insumo salvo com sucesso no banco.")
+
+    # Listagem de insumos
+    try:
+        inputs = get_all_inputs()
+    except Exception as e:
+        inputs = []
+        st.error(f"Erro ao buscar insumos: {e}")
+
+    st.markdown("### 📦 Insumos cadastrados")
+
+    if inputs:
+        df_inputs = pd.DataFrame(inputs).rename(
+            columns={
+                "id": "ID",
+                "input_name": "Insumo",
+                "input_type": "Tipo",
+                "unit": "Unidade",
+                "unit_price": "Preço unitário (R$)",
+            }
+        )
+        st.dataframe(df_inputs, use_container_width=True)
+    else:
+        st.info("Nenhum insumo cadastrado ainda.")
+
+    st.divider()
+
+    # -----------------------------
+    # APLICAÇÃO DE INSUMOS
+    # -----------------------------
+    st.subheader("🌿 Registrar aplicação de insumo em cultura")
+
+    if not cultures or not inputs:
+        st.info("Cadastre ao menos uma cultura e um insumo para registrar aplicações.")
+    else:
+        with st.form("fase2_form_aplicacao"):
+            col1, col2 = st.columns(2)
+            with col1:
+                crop_options = {f"{c['id']} - {c['name']}": c["id"] for c in cultures}
+                crop_label = st.selectbox("Cultura", list(crop_options.keys()))
+                crop_id = crop_options[crop_label]
+            with col2:
+                input_options = {f"{i['id']} - {i['input_name']}": i["id"] for i in inputs}
+                input_label = st.selectbox("Insumo", list(input_options.keys()))
+                input_id = input_options[input_label]
+
+            col3, col4, col5 = st.columns(3)
+            with col3:
+                quantity = st.number_input("Quantidade aplicada", min_value=0.1, value=1.0, step=0.1)
+            with col4:
+                application_date = st.date_input("Data da aplicação")
+            with col5:
+                recurrence = st.selectbox("Recorrência", ["Nenhuma", "Semanal", "Mensal"])
+
+            recurrence_days = st.number_input(
+                "Intervalo em dias (se recorrente)",
+                min_value=0,
+                value=0,
+                step=1,
+            )
+
+            submit_app = st.form_submit_button("💾 Registrar aplicação")
+
+            if submit_app:
+                input_info = get_input_by_id(input_id)
+                unit = input_info["unit"] if input_info else "unid"
+
+                data = {
+                    "crop_id": crop_id,
+                    "input_id": input_id,
+                    "quantity": float(quantity),
+                    "unit": unit,
+                    "application_date": application_date.strftime("%Y-%m-%d"),
+                    "recurrence": recurrence if recurrence != "Nenhuma" else None,
+                    "recurrence_days": int(recurrence_days) if recurrence != "Nenhuma" else None,
+                }
+                save_input_application_to_db(data)
+                st.success("Aplicação registrada com sucesso no banco.")
+
+    st.markdown("### 📜 Visão por cultura e insumo (relatórios)")
+
+    if cultures:
+        with st.expander("📋 Relatório por cultura"):
+            for crop in cultures:
+                st.markdown(f"**🌱 {crop['name']}**")
+                try:
+                    apps = get_applications_by_crop_id(crop["id"])
+                except Exception as e:
+                    st.error(f"Erro ao buscar aplicações para {crop['name']}: {e}")
+                    continue
+
+                if not apps:
+                    st.info("Nenhuma aplicação registrada para esta cultura.")
+                else:
+                    df_apps = pd.DataFrame(apps).rename(
+                        columns={
+                            "input_name": "Insumo",
+                            "input_type": "Tipo",
+                            "quantity": "Quantidade",
+                            "unit": "Unidade",
+                            "application_date": "Data",
+                        }
+                    )
+                    df_apps["Data"] = pd.to_datetime(df_apps["Data"]).dt.date
+                    st.dataframe(df_apps, use_container_width=True)
+
+    if inputs:
+        with st.expander("📦 Relatório por insumo"):
+            for ins in inputs:
+                st.markdown(f"**🧪 {ins['input_name']} ({ins['input_type']})**")
+                try:
+                    apps = get_applications_by_input_id(ins["id"])
+                except Exception as e:
+                    st.error(f"Erro ao buscar aplicações para {ins['input_name']}: {e}")
+                    continue
+
+                if not apps:
+                    st.info("Insumo ainda não aplicado em nenhuma cultura.")
+                else:
+                    df_apps = pd.DataFrame(apps).rename(
+                        columns={
+                            "crop_name": "Cultura",
+                            "quantity": "Quantidade",
+                            "unit": "Unidade",
+                            "application_date": "Data",
+                        }
+                    )
+                    df_apps["Data"] = pd.to_datetime(df_apps["Data"]).dt.date
+                    st.dataframe(df_apps, use_container_width=True)
+
+    st.divider()
+
+    # -----------------------------
+    # PREVISÃO (REGRESSÃO LINEAR)
+    # -----------------------------
+    st.subheader("📈 Previsão de demanda de insumos (Regressão Linear)")
+
+    col_params, col_run = st.columns([2, 1])
+    with col_params:
+        target_area = st.number_input(
+            "Área alvo para previsão (ha)",
+            min_value=0.1,
+            value=10.0,
+            step=0.5,
+        )
+        target_productivity = st.number_input(
+            "Produtividade alvo (t/ha)",
+            min_value=0.1,
+            value=6.0,
+            step=0.1,
+        )
+    with col_run:
+        run_forecast_btn = st.button("🚜 Rodar previsão")
+
+    if run_forecast_btn:
+        try:
+            df_forecast = fase2_run_forecast(target_area, target_productivity)
+        except Exception as e:
+            df_forecast = None
+            st.error(f"Erro ao executar previsão: {e}")
+
+        if df_forecast is None:
+            st.warning("Dados insuficientes para gerar previsões. Registre mais aplicações.")
+        else:
+            st.success("Previsão gerada com sucesso!")
+            st.markdown("### 📊 Resultado por insumo")
+            st.dataframe(df_forecast, use_container_width=True)
+
+            st.markdown("### 💰 Custo estimado por insumo")
+            st.bar_chart(
+                df_forecast.set_index("Insumo")[["Custo estimado (R$)"]]
+            )
+
+            st.markdown("### ⭐ Índice de eficiência (IEI)")
+            st.bar_chart(
+                df_forecast.set_index("Insumo")[["Índice de eficiência (t/unidade)"]]
+            )
+
+            st.markdown("### 🌟 Destaques de eficiência")
+            top_eff = df_forecast.sort_values(
+                by="Índice de eficiência (t/unidade)", ascending=False
+            ).head(3)
+
+            for _, row in top_eff.iterrows():
+                st.markdown(
+                    f"""
+                    - **{row['Insumo']}** ({row['Tipo']})
+                      - Eficiência: **{row['Índice de eficiência (t/unidade)']:.2f}**
+                      - Classificação: {row['Classificação de eficiência']}
+                      - Uso médio: **{row['Uso médio por hectare (unidade/ha)']:.2f}**
+                      - Custo estimado: **R$ {row['Custo estimado (R$)']:.2f}**
+                    """
+                )
+#     else:
+#         st.info("Defina o cenário de área e produtividade e clique em **Rodar previsão**.")
 
 # =========================
 # FASE 3 – MOCK (sensores + irrigação)
@@ -397,45 +830,421 @@ elif aba == "📦 Fase 2 — Previsão de Insumos":
 elif aba == "💧 Fase 3 — Sensores e Irrigação":
     banner("Fase 3 — IoT com ESP32 (Sensores + Irrigação)", "#40916c")
 
-    if st.button("Sincronizar sensores ESP32"):
-        st.info("Dados do ESP32 coletados (simulação).")
+    if not PHASE3_AVAILABLE:
+        st.error(f"Erro ao carregar módulo da Fase 3: {PHASE3_ERROR}")
+        st.info("Verifique se as dependências (oracledb, sqlalchemy, etc) estão instaladas e se o arquivo .env está configurado.")
+    else:
+        # --- MONITORAMENTO CLIMÁTICO ---
+        c_header, c_btn = st.columns([3, 1])
+        with c_header:
+            st.subheader("🌤️ Monitoramento Climático")
+        with c_btn:
+            if st.button("🔄 Sincronizar Clima (API)"):
+                with st.spinner("Buscando dados na OpenWeatherMap..."):
+                    try:
+                        # Importação tardia para evitar erro circular ou de dependência
+                        from src.fase3.src.python.services.weather_service import run_weather_integration
+                        run_weather_integration()
+                        st.success("Dados climáticos atualizados!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro na sincronização: {e}")
 
-    if st.button("Ativar bomba de irrigação"):
-        st.warning("Bomba ativada (simulação).")
+        try:
+            climate_records = climate_service.list_climate_data()
+            climate_df = pd.DataFrame(climate_records)
+        except Exception as e:
+            st.error(f"Erro ao buscar dados climáticos: {e}")
+            climate_df = pd.DataFrame()
 
-    st.subheader("📉 Leituras recentes do ESP32")
-    df = create_mock_dataframe(15)
-    st.dataframe(df)
+        if not climate_df.empty:
+            climate_df["timestamp"] = pd.to_datetime(climate_df["timestamp"])
+            latest_climate = climate_df.sort_values("timestamp", ascending=False).iloc[0]
+            
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.metric("Temperatura", f"{latest_climate['temperature']} °C")
+            with c2:
+                st.metric("Umidade do Ar", f"{latest_climate['air_humidity']}%")
+            with c3:
+                rain = "🌧️ Sim" if latest_climate['rain_forecast'] else "☀️ Não"
+                st.metric("Previsão de Chuva", rain)
+            with c4:
+                st.caption(f"Atualizado em: {latest_climate['timestamp'].strftime('%d/%m/%Y %H:%M')}")
+        else:
+            st.info("Sem dados climáticos recentes.")
+
+        st.markdown("---")
+        
+        # --- MONITORAMENTO DE SENSORES ---
+        st.subheader("📡 Sensores IoT (Solo e Irrigação)")
+
+        # Dados atuais dos sensores
+        try:
+            sensor_records = sensor_service.list_sensor_records()
+            sensor_df = pd.DataFrame(sensor_records)
+        except Exception as e:
+            st.error(f"Erro ao buscar dados dos sensores: {e}")
+            sensor_df = pd.DataFrame()
+
+        if sensor_df.empty:
+            st.info("Nenhum dado de sensor disponível. Utilize o simulador abaixo para gerar dados.")
+        else:
+            sensor_df["timestamp"] = pd.to_datetime(sensor_df["timestamp"])
+            latest = sensor_df.sort_values("timestamp", ascending=False).iloc[0]
+            
+            st.subheader("🌱 Estado Atual da Safra (Última Leitura)")
+            st.caption(f"Data/Hora: {latest['timestamp']}")
+            
+            col1, col2, col3, col4, col5 = st.columns(5)
+            
+            with col1:
+                # Gauge chart para umidade (usando métrica simples por enquanto para evitar dependência complexa de plotly no dashboard principal se não necessário)
+                st.metric("Umidade do Solo", f"{latest['soil_moisture']:.1f}%", delta_color="normal")
+                st.progress(min(int(latest['soil_moisture']), 100))
+            
+            with col2:
+                st.metric("pH do Solo", f"{latest['soil_ph']:.2f}")
+            
+            with col3:
+                phos = "✅ Presente" if latest["phosphorus_present"] else "❌ Ausente"
+                st.metric("Fósforo (P)", phos)
+            
+            with col4:
+                pot = "✅ Presente" if latest["potassium_present"] else "❌ Ausente"
+                st.metric("Potássio (K)", pot)
+            
+            with col5:
+                status = latest["irrigation_status"]
+                emoji = "💧" if status == "ATIVADA" else "⛔"
+                st.metric("Irrigação", f"{emoji} {status}")
+
+            # --- MONITORAMENTO DE ALERTAS ---
+            st.markdown("---")
+            st.subheader("🚨 Monitoramento de Alertas")
+            
+            try:
+                from src.final.aws_sns_service import get_sns_service
+                sns_service = get_sns_service()
+                
+                alerts = []
+                
+                # Verificar condições críticas
+                if latest['soil_ph'] < 5.5 or latest['soil_ph'] > 7.0:
+                    alerts.append(("pH Crítico", latest))
+                
+                if latest['soil_moisture'] < 20:
+                    alerts.append(("Seca Severa", latest))
+                
+                if latest['soil_moisture'] > 80:
+                    alerts.append(("Encharcamento", latest))
+                
+                if not latest['phosphorus_present'] and not latest['potassium_present']:
+                    alerts.append(("Deficiência Nutricional", latest))
+                
+                if latest['soil_moisture'] < 30 and latest['irrigation_status'] == "DESLIGADA":
+                    alerts.append(("Falha na Irrigação", latest))
+                
+                # Exibir e enviar alertas automaticamente
+                if alerts:
+                    st.warning(f"⚠️ {len(alerts)} alerta(s) crítico(s) detectado(s)!")
+                    
+                    for alert_type, sensor_data in alerts:
+                        col_alert, col_status = st.columns([3, 1])
+                        with col_alert:
+                            st.error(f"🚨 **{alert_type}**")
+                        with col_status:
+                            # Tentar enviar SNS automaticamente
+                            if sns_service.send_sensor_alert(alert_type, dict(sensor_data)):
+                                st.success("📧 SNS enviado")
+                            else:
+                                st.info("SNS não config.")
+                else:
+                    st.success("✅ Todos os parâmetros estão dentro do normal")
+                    
+            except Exception as e:
+                st.error(f"Erro ao verificar alertas: {e}")
+
+
+            # Gráficos Históricos
+            st.subheader("📉 Histórico de Leituras")
+            
+            tab1, tab2 = st.tabs(["Umidade & pH", "Nutrientes & Irrigação"])
+            
+            with tab1:
+                st.line_chart(sensor_df.set_index("timestamp")[["soil_moisture", "soil_ph"]])
+            
+            with tab2:
+                st.write("Status de Irrigação ao longo do tempo")
+                sensor_df['status_bin'] = sensor_df['irrigation_status'].apply(lambda x: 1 if x == "ATIVADA" else 0)
+                st.area_chart(sensor_df.set_index("timestamp")[["status_bin"]])
+
+        # --- SIMULADOR IOT ---
+        st.markdown("---")
+        st.subheader("🎮 Simulador IoT (Digital Twin)")
+        with st.expander("Gerar nova leitura de sensor (Simulação de Hardware)"):
+            with st.form("simulador_iot"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    sim_moisture = st.slider("Umidade do Solo (%)", 0.0, 100.0, 45.0)
+                    sim_ph = st.slider("pH do Solo", 0.0, 14.0, 6.5)
+                with c2:
+                    sim_p = st.checkbox("Fósforo Presente", value=True)
+                    sim_k = st.checkbox("Potássio Presente", value=True)
+                    sim_irr = st.selectbox("Status Irrigação", ["DESLIGADA", "ATIVADA"])
+                
+                if st.form_submit_button("📡 Enviar Leitura"):
+                    try:
+                        # Pegar o primeiro sensor disponível ou criar um ID fictício
+                        components = component_service.list_components()
+                        sensor_id = None
+                        for comp in components:
+                            if comp.get('type') == 'Sensor':
+                                sensor_id = comp['id']
+                                break
+                        
+                        # Se não houver sensor cadastrado, usar um ID padrão
+                        if not sensor_id:
+                            sensor_id = "simulator-sensor-01"
+                        
+                        sensor_service.create_sensor_record({
+                            "sensor_id": sensor_id,
+                            "soil_moisture": sim_moisture,
+                            "soil_ph": sim_ph,
+                            "phosphorus_present": sim_p,
+                            "potassium_present": sim_k,
+                            "irrigation_status": sim_irr,
+                            "timestamp": datetime.now()
+                        })
+                        st.success("Leitura enviada com sucesso para o banco de dados!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao salvar leitura: {e}")
 
 
 # =========================
 # FASE 4 – MOCK (modelo preditivo)
 # =========================
+# =========================
+# FASE 4 – MODELO PREDITIVO & IA
+# =========================
 elif aba == "🤖 Fase 4 — Modelo Preditivo":
-    banner("Fase 4 — Random Forest para Previsões de Manejo", "#1d3557")
+    banner("Fase 4 — Inteligência Artificial e Análises", "#7209b7")
+    
+    st.markdown("""
+    Esta fase utiliza **Machine Learning (Random Forest)** para analisar o histórico de dados 
+    e prever a necessidade de irrigação com base em múltiplas variáveis.
+    """)
 
-    if st.button("Rodar modelo preditivo agora"):
-        st.success("Random Forest executado (mock).")
+    if not PHASE3_AVAILABLE:
+        st.error("O módulo de ML depende dos serviços da Fase 3, que não foram carregados corretamente.")
+    else:
+        # Status do modelo
+        try:
+            model_status = ml_service.get_model_status()
+        except Exception as e:
+            st.error(f"Erro ao verificar status do modelo: {e}")
+            model_status = {"model_loaded": False}
 
-    st.subheader("📈 Previsão de necessidade de irrigação")
-    chart_df = pd.DataFrame({
-        "Dia": range(10),
-        "Necessidade (%)": np.random.randint(10, 100, 10)
-    })
-    st.bar_chart(chart_df)
+        # --- ABAS INTERNAS DA FASE 4 ---
+        tab_ml, tab_analytics = st.tabs(["🧠 Treinamento & Simulador", "📊 Análises Avançadas"])
 
+        with tab_ml:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("📊 Status do Modelo")
+                if model_status["model_loaded"]:
+                    st.success("✅ Modelo carregado e pronto para uso")
+                    st.info(f"📁 Caminho: {model_status.get('model_path', 'N/A')}")
+                else:
+                    st.warning("⚠️ Modelo não treinado")
+                    st.info("Treine o modelo com dados históricos para ativar predições")
+            
+            with col2:
+                st.subheader("🎯 Treinar Modelo")
+                if st.button("🚀 Treinar Modelo com Dados Históricos"):
+                    with st.spinner("Treinando modelo..."):
+                        try:
+                            sensor_data = sensor_service.list_sensor_records()
+                            climate_data = climate_service.list_climate_data()
+                            
+                            result = ml_service.train_model(sensor_data, climate_data)
+                            
+                            if result["success"]:
+                                st.success("✅ Modelo treinado com sucesso!")
+                                c1, c2, c3 = st.columns(3)
+                                c1.metric("Acurácia", f"{result['accuracy']:.1%}")
+                                c2.metric("Amostras Treino", result['training_samples'])
+                                c3.metric("Amostras Teste", result['test_samples'])
+                                
+                                with st.expander("📋 Relatório de Classificação"):
+                                    st.text(result['classification_report'])
+                            else:
+                                st.error(f"❌ Erro no treinamento: {result['message']}")
+                        except Exception as e:
+                            st.error(f"Erro crítico ao treinar: {e}")
+
+            st.markdown("---")
+
+            # Feature Importance
+            if model_status["model_loaded"]:
+                st.subheader("📈 O que influencia a decisão?")
+                try:
+                    importance = ml_service.get_feature_importance()
+                    if importance:
+                        fig = px.bar(
+                            x=list(importance.values()),
+                            y=list(importance.keys()),
+                            orientation='h',
+                            title="Importância das Variáveis no Modelo",
+                            labels={'x': 'Importância', 'y': 'Variável'}
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    st.warning(f"Não foi possível gerar gráfico de importância: {e}")
+            
+            # Simulador de Predição
+            st.subheader("🎮 Simulador de Predição (What-If)")
+            st.markdown("Teste diferentes cenários para ver a decisão da IA:")
+            
+            with st.form("simulador_ml"):
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    s_moist = st.slider("Umidade Solo (%)", 0, 100, 45)
+                    s_ph = st.slider("pH Solo", 0.0, 14.0, 6.5)
+                    s_p = st.checkbox("Fósforo?", value=True)
+                with c2:
+                    s_k = st.checkbox("Potássio?", value=True)
+                    s_temp = st.slider("Temperatura (°C)", -10, 50, 25)
+                    s_hum = st.slider("Umidade Ar (%)", 0, 100, 60)
+                with c3:
+                    s_rain = st.checkbox("Chuva Prevista?", value=False)
+                    s_hour = st.slider("Hora", 0, 23, 12)
+                    s_month = st.slider("Mês", 1, 12, 6)
+                
+                if st.form_submit_button("🔮 Prever Ação"):
+                    if model_status["model_loaded"]:
+                        try:
+                            pred = ml_service.predict_irrigation(
+                                s_moist, s_ph, s_p, s_k, s_temp, s_hum, s_rain, s_hour, s_month
+                            )
+                            if pred["success"]:
+                                decision = "💧 IRRIGAR" if pred["should_irrigate"] else "⛔ NÃO IRRIGAR"
+                                color = "green" if pred["should_irrigate"] else "red"
+                                st.markdown(f"<h2 style='color: {color}; text-align: center;'>{decision}</h2>", unsafe_allow_html=True)
+                                st.metric("Confiança da IA", f"{pred['confidence']:.1%}")
+                        except Exception as e:
+                            st.error(f"Erro na predição: {e}")
+                    else:
+                        st.error("Treine o modelo primeiro!")
+
+        with tab_analytics:
+            st.subheader("🔍 Análise de Correlações")
+            try:
+                sensor_recs = sensor_service.list_sensor_records()
+                climate_recs = climate_service.list_climate_data()
+                
+                if sensor_recs and climate_recs:
+                    df_s = pd.DataFrame(sensor_recs)
+                    df_c = pd.DataFrame(climate_recs)
+                    
+                    df_s["timestamp"] = pd.to_datetime(df_s["timestamp"])
+                    df_c["timestamp"] = pd.to_datetime(df_c["timestamp"])
+                    
+                    # Aproximação por hora para merge
+                    df_s['ts_h'] = df_s['timestamp'].dt.floor('h')
+                    df_c['ts_h'] = df_c['timestamp'].dt.floor('h')
+                    
+                    merged = pd.merge(df_s, df_c, left_on='ts_h', right_on='ts_h', how='inner')
+                    
+                    if not merged.empty:
+                        corr_cols = ['soil_moisture', 'soil_ph', 'temperature', 'air_humidity']
+                        corr_matrix = merged[corr_cols].corr()
+                        
+                        fig_corr = px.imshow(corr_matrix, text_auto=True, title="Matriz de Correlação", color_continuous_scale='RdBu_r')
+                        st.plotly_chart(fig_corr, use_container_width=True)
+                        
+                        st.subheader("💧 Padrões de Irrigação")
+                        fig_scatter = px.scatter(merged, x="soil_moisture", y="temperature", color="irrigation_status",
+                                               title="Dispersão: Umidade x Temperatura (por Status Irrigação)")
+                        st.plotly_chart(fig_scatter, use_container_width=True)
+                    else:
+                        st.info("Não há dados coincidentes (mesma hora) entre sensores e clima para correlação.")
+                else:
+                    st.info("Dados insuficientes para análise avançada.")
+            except Exception as e:
+                st.error(f"Erro ao gerar análises: {e}")
 
 # =========================
-# FASE 6 – MOCK (visão computacional)
+# FASE 6 – VISÃO COMPUTACIONAL
 # =========================
 elif aba == "🪲 Fase 6 — Visão Computacional":
-    banner("Fase 6 — YOLO para detecção de pragas/doenças", "#6a040f")
+    banner("Fase 6 — Detecção de Pragas e Animais (YOLO)", "#e63946")
+    
+    st.info("Esta fase utiliza Visão Computacional para analisar imagens enviadas e detectar animais ou pragas.")
 
-    uploaded = st.file_uploader("Envie uma imagem da plantação", type=["jpg", "png"])
+    uploaded_file = st.file_uploader("Envie uma imagem para análise", type=["jpg", "jpeg", "png"])
 
-    if uploaded and st.button("Analisar imagem"):
-        st.image(uploaded, caption="Imagem recebida (mock).")
-        st.error("⚠️ Praga detectada: Lagarta — 82% de confiança (simulação).")
+    if uploaded_file is not None:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Imagem Original")
+            st.image(uploaded_file, use_container_width=True)
+        
+        with col2:
+            st.subheader("Resultado da Análise")
+            if st.button("🔍 Analisar Imagem"):
+                with st.spinner("Processando imagem com YOLO..."):
+                    try:
+                        # Importação tardia para evitar erro se cv2/ultralytics não estiver instalado no início
+                        from src.fase6.src.computer_vision_service import ComputerVisionService
+                        from src.final.aws_sns_service import get_sns_service
+                        
+                        # Instanciar serviço (pode demorar um pouco na primeira vez para baixar o modelo)
+                        cv_service = ComputerVisionService()
+                        sns_service = get_sns_service()
+                        
+                        # Ler bytes do arquivo
+                        bytes_data = uploaded_file.getvalue()
+                        
+                        # Analisar
+                        annotated_img, detections = cv_service.analyze_image(bytes_data)
+                        
+                        if annotated_img:
+                            st.image(annotated_img, caption="Imagem Anotada", use_container_width=True)
+                            
+                            if detections:
+                                st.success(f"Detectados: {len(detections)} objetos.")
+                                
+                                # Verificar se há animais (pragas potenciais)
+                                animal_classes = ['bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'mouse', 'rat']
+                                detected_animals = [d for d in detections if d['class'] in animal_classes]
+                                
+                                # Mostrar todas as detecções
+                                for det in detections:
+                                    emoji = "🚨" if det['class'] in animal_classes else "✅"
+                                    st.write(f"{emoji} **{det['class']}** ({det['confidence']:.2f})")
+                                
+                                # Disparar alerta se houver animais
+                                if detected_animals:
+                                    st.warning(f"⚠️ {len(detected_animals)} animal(is) detectado(s)! Disparan do alerta SNS...")
+                                    alert_sent = sns_service.send_pest_alert(detected_animals)
+                                    if alert_sent:
+                                        st.success("📧 Alerta SNS enviado com sucesso!")
+                                    else:
+                                        st.info("SNS não configurado. Alerta não enviado.")
+                            else:
+                                st.info("Nenhum objeto detectado na imagem.")
+                        else:
+                            st.warning("Não foi possível processar a imagem.")
+                            
+                    except ImportError:
+                        st.error("Bibliotecas da Fase 6 (opencv, ultralytics) não encontradas.")
+                        st.code("pip install opencv-python ultralytics")
+                    except Exception as e:
+                        st.error(f"Erro durante a análise: {e}")
 
 
 # =========================

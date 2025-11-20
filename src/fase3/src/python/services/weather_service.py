@@ -5,7 +5,8 @@ import serial
 import requests
 
 from logs.logger import Logger
-from services.climate_service import create_climate_data
+from services.climate_service import ClimateService
+from database.oracle import db
 
 logger = Logger(__name__)() 
 
@@ -84,7 +85,9 @@ def run_weather_integration():
 
         # 1. Salva no banco de dados
         try:
-            record = create_climate_data(data)
+            # Instancia o serviço com a sessão do banco
+            climate_service = ClimateService(db.session)
+            record = climate_service.create_climate_data(data)
             logger.info(f"[OK] Registro salvo no banco: ID {record['id']}")
         except Exception as db_error:
             logger.exception(f"[ERRO] Falha ao salvar dados no banco: {db_error}")

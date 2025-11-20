@@ -1,0 +1,14 @@
+[
+  {
+    "input_type": "fertilizante",
+    "input_name": "NPK 4-14-8",
+    "unit": "kg",
+    "unit_price": 4.75
+  },
+  {
+    "input_type": "semente",
+    "input_name": "Milho Híbrido",
+    "unit": "sacos",
+    "unit_price": 280.00
+  }
+]
