@@ -55,6 +55,24 @@ Dentre os arquivos e pastas presentes na raiz do projeto, definem-se:
 
 ## 🗃 Histórico de lançamentos
 
+* 0.2.0 - 20/11/2025
+  * Integração real da Fase 1 na dashboard, substituindo os mocks por lógica funcional.
+  * Implementação completa do CRUD de culturas (Create, Read, Update e Delete), mantendo
+    exatamente a lógica definida na Fase 1 (formas geométricas, espaçamentos, linhas,
+    área total, área útil, área de sulcos/carreador).
+  * Adição de um formulário de atualização de cultura com recálculo automático de
+    métricas (área total, área de cultivo, sulcos, número de linhas e demais parâmetros).
+  * Reprocessamento automático da quantidade total de insumos sempre que a cultura
+    é atualizada, garantindo consistência dos cálculos.
+  * Melhorias visuais e de usabilidade na aba da Fase 1:
+    - Seção de cadastro de cultura
+    - Seção de cadastro de insumos
+    - Lista de culturas com expander, métricas e detalhes
+    - Botão de exclusão da cultura
+  * Estrutura revisada para suportar múltiplas culturas e insumos dinamicamente dentro
+    da dashboard da Fase 7.
+
+
 * 0.1.0 - 13/11/2025
   * Primeira versão consolidada da dashboard, com todas as fases do projeto mapeadas e ações mockadas. 
   * Serve como base da integração total da Fase 7. 
