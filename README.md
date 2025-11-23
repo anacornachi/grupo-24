@@ -307,7 +307,6 @@ streamlit run src/final/dashboard.py
 
 A aplicação será aberta automaticamente no navegador em `http://localhost:8501`.
 
-![Dashboard em Execução - ADICIONAR AQUI](assets/dashboard_running.png)
 
 ---
 
@@ -357,8 +356,13 @@ byte-08/
 5. **Predição (Fase 4):** Treinar modelo e simular cenários de irrigação
 6. **Inspeção (Fase 6):** Fazer upload de foto da plantação, detectar pássaros, receber alerta
 
-![Fluxo de Uso - ADICIONAR AQUI](assets/fluxograma.png)
+![Fluxo de Uso](assets/fluxograma.png)
 
+---
+
+## Video da entrega
+
+[Video](https://youtu.be/xTZI9__5S80)
 ---
 
 ## 🗃 Histórico de Lançamentos
